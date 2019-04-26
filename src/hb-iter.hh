@@ -249,9 +249,19 @@ struct _hb_is_iterator_of
   int operator () (hb_priority<2>, hb_iter_t<Iter1, typename Iter1::item_t> *) { return 0; }
   static_assert (sizeof (char) != sizeof (int), "");
 };
+
+template <typename Iter=void>
+static char xyz (...) { return 0; }
+template <typename Iter>
+static int xyz (hb_iter_t<Iter, typename Iter::item_t> *) { return 0; }
+
 template<typename Iter, typename Item>
 struct hb_is_iterator_of { enum {
-  value = sizeof (int) == sizeof (hb_declval<_hb_is_iterator_of<Iter, Item> > () (hb_prioritize, hb_declval (Iter*))) }; };
+// PROBLEM HERE:
+  value = sizeof (int) == sizeof (xyz ((Iter*) nullptr)) }; };
+// Following works:
+//  value = sizeof (int) == sizeof (xyz<Iter> ((Iter*) nullptr)) }; };
+
 #define hb_is_iterator_of(Iter, Item) hb_is_iterator_of<Iter, Item>::value
 #define hb_is_iterator(Iter) hb_is_iterator_of (Iter, typename Iter::item_t)
 
