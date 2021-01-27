@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# NOTE (SERIOUS!)
+# harfbuzz used the "-fno-exceptions" compiler-flag (which was set in configure.ac)
+# This will NOT work on android armeabi-v7a as something will pull in the unwind-symbols
+# nevertheless. Not only that, the symbols pulled in that way will be re-exported from the binary!
+# This messes up the fragile exception unwinding on that platform.
+# When updating the sources
+# - Remove "-fno-exceptions" from CXXFLAGS in configure.ac and run autoconf & automake before building!
+# - Make sure all *gnu*wind symbols mentioned in "readelf -s" are LOCAL or HIDDEN on armv7a
+# !!!!!
+
+set -e
+
+if [ -z ${WDY_XBUILD_ROOT} ]; then
+	echo "WDY_XBUILD_ROOT not set!"
+	exit 1
+fi
+
+DIR=$(readlink -f $(dirname $0))
+
+export NOCONFIGURE=true
+cd ${DIR}
+./autogen.sh
+
+${WDY_XBUILD_ROOT}/bin/android-build "${DIR}" --with-coretext=no --with-directwrite=no --with-gdi=no  --with-uniscribe=no --with-freetype=yes --with-graphite2=no --with-icu=no --with-fontconfig=no --with-cairo=no --with-gobject=no --with-glib=no --with-libstdc++=yes --with-pic --enable-shared --enable-introspection=no --disable-largefile 
+
+${WDY_XBUILD_ROOT}/bin/prepare_libraries.sh
+
+

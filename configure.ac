@@ -85,7 +85,7 @@ if test "x$GCC" = "xyes"; then
 	# even in the cases where we DO link to libstdc++.
 	# Put -fno-rtti before $CXXFLAGS such that users can re-enable it
 	# by overriding CXXFLAGS.
-	CXXFLAGS="-fno-rtti $CXXFLAGS -fno-exceptions -fno-threadsafe-statics"
+	CXXFLAGS="-fno-rtti $CXXFLAGS -fno-threadsafe-statics"
 
 	case "$host" in
 		*-*-mingw*)
