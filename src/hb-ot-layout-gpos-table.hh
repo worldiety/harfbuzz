@@ -566,6 +566,26 @@ struct AnchorMatrix
     return_trace (true);
   }
 
+  bool subset (hb_subset_context_t *c,
+	       unsigned cols,
+	       const hb_map_t *klass_mapping) const
+  {
+    TRACE_SUBSET (this);
+    auto *out = c->serializer->start_embed (*this);
+
+    auto indexes =
+    + hb_range (rows * cols)
+    | hb_filter ([=] (unsigned index) { return klass_mapping->has (index % cols); })
+    ;
+
+    out->serialize (c->serializer,
+                    (unsigned) rows,
+                    this,
+                    c->plan->layout_variation_idx_map,
+                    indexes);
+    return_trace (true);
+  }
+
   bool sanitize (hb_sanitize_context_t *c, unsigned int cols) const
   {
     TRACE_SANITIZE (this);
@@ -674,7 +694,7 @@ struct MarkArray : ArrayOf<MarkRecord>	/* Array of MarkRecords--in Coverage orde
   {
     TRACE_SERIALIZE (this);
     if (unlikely (!c->extend_min (*this))) return_trace (false);
-    if (unlikely (!c->check_assign (len, it.len ()))) return_trace (false);
+    if (unlikely (!c->check_assign (len, it.len (), HB_SERIALIZE_ERROR_ARRAY_OVERFLOW))) return_trace (false);
     c->copy_all (it, base, c->to_bias (this), klass_mapping, layout_variation_idx_map);
     return_trace (true);
   }
@@ -736,7 +756,7 @@ struct SinglePosFormat1
   {
     auto out = c->extend_min (*this);
     if (unlikely (!out)) return;
-    if (unlikely (!c->check_assign (valueFormat, valFormat))) return;
+    if (unlikely (!c->check_assign (valueFormat, valFormat, HB_SERIALIZE_ERROR_INT_OVERFLOW))) return;
 
     + it
     | hb_map (hb_second)
@@ -755,7 +775,7 @@ struct SinglePosFormat1
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto it =
@@ -850,8 +870,8 @@ struct SinglePosFormat2
   {
     auto out = c->extend_min (*this);
     if (unlikely (!out)) return;
-    if (unlikely (!c->check_assign (valueFormat, valFormat))) return;
-    if (unlikely (!c->check_assign (valueCount, it.len ()))) return;
+    if (unlikely (!c->check_assign (valueFormat, valFormat, HB_SERIALIZE_ERROR_INT_OVERFLOW))) return;
+    if (unlikely (!c->check_assign (valueCount, it.len (), HB_SERIALIZE_ERROR_ARRAY_OVERFLOW))) return;
 
     + it
     | hb_map (hb_second)
@@ -870,7 +890,7 @@ struct SinglePosFormat2
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     unsigned sub_length = valueFormat.get_len ();
@@ -1129,7 +1149,7 @@ struct PairSet
     if (unlikely (!c->serializer->extend_min (out))) return_trace (false);
     out->len = 0;
 
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     unsigned len1 = valueFormats[0].get_len ();
@@ -1250,7 +1270,7 @@ struct PairPosFormat1
   {
     TRACE_SUBSET (this);
 
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto *out = c->serializer->start_embed (*this);
@@ -1338,7 +1358,7 @@ struct PairPosFormat2
     if ((!valueFormat1.has_device ()) && (!valueFormat2.has_device ())) return;
 
     hb_set_t class1_set, class2_set;
-    for (const unsigned cp : c->glyph_set->iter ())
+    for (const unsigned cp : + c->glyph_set->iter () | hb_filter (this + coverage))
     {
       unsigned klass1 = (this+classDef1).get (cp);
       unsigned klass2 = (this+classDef2).get (cp);
@@ -1346,7 +1366,10 @@ struct PairPosFormat2
       class2_set.add (klass2);
     }
 
-    if (class1_set.is_empty () || class2_set.is_empty ()) return;
+    if (class1_set.is_empty ()
+        || class2_set.is_empty ()
+        || (class2_set.get_population() == 1 && class2_set.has(0)))
+      return;
 
     unsigned len1 = valueFormat1.get_len ();
     unsigned len2 = valueFormat2.get_len ();
@@ -1415,11 +1438,11 @@ struct PairPosFormat2
     out->valueFormat2 = valueFormat2;
 
     hb_map_t klass1_map;
-    out->classDef1.serialize_subset (c, classDef1, this, &klass1_map);
+    out->classDef1.serialize_subset (c, classDef1, this, &klass1_map, true, &(this + coverage));
     out->class1Count = klass1_map.get_population ();
 
     hb_map_t klass2_map;
-    out->classDef2.serialize_subset (c, classDef2, this, &klass2_map);
+    out->classDef2.serialize_subset (c, classDef2, this, &klass2_map, false);
     out->class2Count = klass2_map.get_population ();
 
     unsigned len1 = valueFormat1.get_len ();
@@ -1441,7 +1464,7 @@ struct PairPosFormat2
 		})
     ;
 
-    const hb_set_t &glyphset = *c->plan->_glyphset_gsub;
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto it =
@@ -1728,7 +1751,7 @@ struct CursivePosFormat1
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto *out = c->serializer->start_embed (*this);
@@ -1904,7 +1927,7 @@ struct MarkBasePosFormat1
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto *out = c->serializer->start_embed (*this);
@@ -2025,10 +2048,37 @@ typedef AnchorMatrix LigatureAttach;	/* component-major--
 					 * mark-minor--
 					 * ordered by class--zero-based. */
 
-typedef OffsetListOf<LigatureAttach> LigatureArray;
-					/* Array of LigatureAttach
-					 * tables ordered by
-					 * LigatureCoverage Index */
+/* Array of LigatureAttach tables ordered by LigatureCoverage Index */
+struct LigatureArray : OffsetListOf<LigatureAttach>
+{
+  template <typename Iterator,
+	    hb_requires (hb_is_iterator (Iterator))>
+  bool subset (hb_subset_context_t *c,
+	       Iterator		    coverage,
+	       unsigned		    class_count,
+	       const hb_map_t	   *klass_mapping) const
+  {
+    TRACE_SUBSET (this);
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
+
+    auto *out = c->serializer->start_embed (this);
+    if (unlikely (!c->serializer->extend_min (out)))  return_trace (false);
+
+    for (const auto _ : + hb_zip (coverage, *this)
+		  | hb_filter (glyphset, hb_first))
+    {
+      auto *matrix = out->serialize_append (c->serializer);
+      if (unlikely (!matrix)) return_trace (false);
+
+      matrix->serialize_subset (c,
+				_.second,
+				this,
+				class_count,
+				klass_mapping);
+    }
+    return_trace (this->len);
+  }
+};
 
 struct MarkLigPosFormat1
 {
@@ -2130,8 +2180,56 @@ struct MarkLigPosFormat1
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    // TODO(subset)
-    return_trace (false);
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
+    const hb_map_t &glyph_map = *c->plan->glyph_map;
+
+    auto *out = c->serializer->start_embed (*this);
+    if (unlikely (!c->serializer->extend_min (out))) return_trace (false);
+    out->format = format;
+
+    hb_map_t klass_mapping;
+    Markclass_closure_and_remap_indexes (this+markCoverage, this+markArray, glyphset, &klass_mapping);
+
+    if (!klass_mapping.get_population ()) return_trace (false);
+    out->classCount = klass_mapping.get_population ();
+
+    auto mark_iter =
+    + hb_zip (this+markCoverage, this+markArray)
+    | hb_filter (glyphset, hb_first)
+    ;
+
+    auto new_mark_coverage =
+    + mark_iter
+    | hb_map_retains_sorting (hb_first)
+    | hb_map_retains_sorting (glyph_map)
+    ;
+
+    if (!out->markCoverage.serialize (c->serializer, out)
+			  .serialize (c->serializer, new_mark_coverage))
+      return_trace (false);
+
+    out->markArray.serialize (c->serializer, out)
+		  .serialize (c->serializer,
+                              &klass_mapping,
+                              c->plan->layout_variation_idx_map,
+                              &(this+markArray),
+                              + mark_iter
+                              | hb_map (hb_second));
+
+    auto new_ligature_coverage =
+    + hb_iter (this + ligatureCoverage)
+    | hb_filter (glyphset)
+    | hb_map_retains_sorting (glyph_map)
+    ;
+
+    if (!out->ligatureCoverage.serialize (c->serializer, out)
+			      .serialize (c->serializer, new_ligature_coverage))
+      return_trace (false);
+
+    out->ligatureArray.serialize_subset (c, ligatureArray, this,
+                                         hb_iter (this+ligatureCoverage), classCount, &klass_mapping);
+
+    return_trace (true);
   }
 
   bool sanitize (hb_sanitize_context_t *c) const
@@ -2163,6 +2261,7 @@ struct MarkLigPosFormat1
   public:
   DEFINE_SIZE_STATIC (12);
 };
+
 
 struct MarkLigPos
 {
@@ -2288,7 +2387,7 @@ struct MarkMarkPosFormat1
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto *out = c->serializer->start_embed (*this);
@@ -2567,7 +2666,7 @@ struct GPOS : GSUBGPOS
 
   bool subset (hb_subset_context_t *c) const
   {
-    hb_subset_layout_context_t l (c, tableTag, c->plan->gpos_lookups, c->plan->gpos_features);
+    hb_subset_layout_context_t l (c, tableTag, c->plan->gpos_lookups, c->plan->gpos_langsys, c->plan->gpos_features);
     return GSUBGPOS::subset<PosLookup> (&l);
   }
 

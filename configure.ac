@@ -1,6 +1,6 @@
 AC_PREREQ([2.64])
 AC_INIT([HarfBuzz],
-        [2.7.4],
+        [2.8.0],
         [https://github.com/harfbuzz/harfbuzz/issues/new],
         [harfbuzz],
         [http://harfbuzz.org/])
@@ -214,24 +214,6 @@ AM_CONDITIONAL(HAVE_CAIRO_FT, $have_cairo_ft)
 
 dnl ==========================================================================
 
-AC_ARG_WITH(fontconfig,
-	[AS_HELP_STRING([--with-fontconfig=@<:@yes/no/auto@:>@],
-			[Use fontconfig @<:@default=auto@:>@])],,
-	[with_fontconfig=auto])
-have_fontconfig=false
-if test "x$with_fontconfig" = "xyes" -o "x$with_fontconfig" = "xauto"; then
-	PKG_CHECK_MODULES(FONTCONFIG, fontconfig, have_fontconfig=true, :)
-fi
-if test "x$with_fontconfig" = "xyes" -a "x$have_fontconfig" != "xtrue"; then
-	AC_MSG_ERROR([fontconfig support requested but not found])
-fi
-if $have_fontconfig; then
-	AC_DEFINE(HAVE_FONTCONFIG, 1, [Have fontconfig library])
-fi
-AM_CONDITIONAL(HAVE_FONTCONFIG, $have_fontconfig)
-
-dnl ==========================================================================
-
 AC_ARG_WITH(icu,
 	[AS_HELP_STRING([--with-icu=@<:@yes/no/builtin/auto@:>@],
 			[Use ICU @<:@default=auto@:>@])],,
@@ -417,45 +399,6 @@ AM_CONDITIONAL(HAVE_CORETEXT, $have_coretext)
 
 dnl ===========================================================================
 
-AC_CACHE_CHECK([for Intel atomic primitives], hb_cv_have_intel_atomic_primitives, [
-	hb_cv_have_intel_atomic_primitives=false
-	AC_TRY_LINK([
-		void memory_barrier (void) { __sync_synchronize (); }
-		int atomic_add (int *i) { return __sync_fetch_and_add (i, 1); }
-		int mutex_trylock (int *m) { return __sync_lock_test_and_set (m, 1); }
-		void mutex_unlock (int *m) { __sync_lock_release (m); }
-		], [], hb_cv_have_intel_atomic_primitives=true
-	)
-])
-if $hb_cv_have_intel_atomic_primitives; then
-	AC_DEFINE(HAVE_INTEL_ATOMIC_PRIMITIVES, 1, [Have Intel __sync_* atomic primitives])
-fi
-
-dnl ===========================================================================
-
-AC_CACHE_CHECK([for Solaris atomic operations], hb_cv_have_solaris_atomic_ops, [
-	hb_cv_have_solaris_atomic_ops=false
-	AC_TRY_LINK([
-		#include <atomic.h>
-		/* This requires Solaris Studio 12.2 or newer: */
-		#include <mbarrier.h>
-		void memory_barrier (void) { __machine_rw_barrier (); }
-		int atomic_add (volatile unsigned *i) { return atomic_add_int_nv (i, 1); }
-		void *atomic_ptr_cmpxchg (volatile void **target, void *cmp, void *newval) { return atomic_cas_ptr (target, cmp, newval); }
-		], [], hb_cv_have_solaris_atomic_ops=true
-	)
-])
-if $hb_cv_have_solaris_atomic_ops; then
-	AC_DEFINE(HAVE_SOLARIS_ATOMIC_OPS, 1, [Have Solaris __machine_*_barrier and atomic_* operations])
-fi
-
-if test "$os_win32" = no && ! $have_pthread; then
-	AC_CHECK_HEADERS(sched.h)
-	AC_SEARCH_LIBS(sched_yield,rt,AC_DEFINE(HAVE_SCHED_YIELD, 1, [Have sched_yield]))
-fi
-
-dnl ===========================================================================
-
 AC_CONFIG_FILES([
 Makefile
 src/Makefile
@@ -471,6 +414,7 @@ test/shaping/data/in-house/Makefile
 test/shaping/data/text-rendering-tests/Makefile
 test/subset/Makefile
 test/subset/data/Makefile
+test/subset/data/repack_tests/Makefile
 docs/Makefile
 docs/version.xml
 ])
@@ -504,7 +448,6 @@ Font callbacks (the more the merrier):
 
 Tools used for command-line utilities:
 	Cairo:			${have_cairo}
-	Fontconfig:		${have_fontconfig}
 
 Additional shapers:
 	Graphite2:		${have_graphite2}

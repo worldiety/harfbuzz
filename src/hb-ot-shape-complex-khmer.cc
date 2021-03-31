@@ -29,6 +29,7 @@
 #ifndef HB_NO_OT_SHAPE
 
 #include "hb-ot-shape-complex-khmer.hh"
+#include "hb-ot-shape-complex-khmer-machine.hh"
 #include "hb-ot-layout.hh"
 
 
@@ -140,27 +141,6 @@ override_features_khmer (hb_ot_shape_planner_t *plan)
 
 struct khmer_shape_plan_t
 {
-  bool get_virama_glyph (hb_font_t *font, hb_codepoint_t *pglyph) const
-  {
-    hb_codepoint_t glyph = virama_glyph;
-    if (unlikely (virama_glyph == (hb_codepoint_t) -1))
-    {
-      if (!font->get_nominal_glyph (0x17D2u, &glyph))
-	glyph = 0;
-      /* Technically speaking, the spec says we should apply 'locl' to virama too.
-       * Maybe one day... */
-
-      /* Our get_nominal_glyph() function needs a font, so we can't get the virama glyph
-       * during shape planning...  Instead, overwrite it here.  It's safe.  Don't worry! */
-      virama_glyph = glyph;
-    }
-
-    *pglyph = glyph;
-    return glyph != 0;
-  }
-
-  mutable hb_codepoint_t virama_glyph;
-
   hb_mask_t mask_array[KHMER_NUM_FEATURES];
 };
 
@@ -170,8 +150,6 @@ data_create_khmer (const hb_ot_shape_plan_t *plan)
   khmer_shape_plan_t *khmer_plan = (khmer_shape_plan_t *) calloc (1, sizeof (khmer_shape_plan_t));
   if (unlikely (!khmer_plan))
     return nullptr;
-
-  khmer_plan->virama_glyph = (hb_codepoint_t) -1;
 
   for (unsigned int i = 0; i < ARRAY_LENGTH (khmer_plan->mask_array); i++)
     khmer_plan->mask_array[i] = (khmer_features[i].flags & F_GLOBAL) ?
@@ -185,15 +163,6 @@ data_destroy_khmer (void *data)
 {
   free (data);
 }
-
-
-enum khmer_syllable_type_t {
-  khmer_consonant_syllable,
-  khmer_broken_cluster,
-  khmer_non_khmer_cluster,
-};
-
-#include "hb-ot-shape-complex-khmer-machine.hh"
 
 static void
 setup_masks_khmer (const hb_ot_shape_plan_t *plan HB_UNUSED,

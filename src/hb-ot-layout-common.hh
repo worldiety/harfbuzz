@@ -88,11 +88,65 @@ static inline void ClassDef_serialize (hb_serialize_context_t *c,
 				       Iterator it);
 
 static void ClassDef_remap_and_serialize (hb_serialize_context_t *c,
-					  const hb_set_t &glyphset,
 					  const hb_map_t &gid_klass_map,
 					  hb_sorted_vector_t<HBGlyphID> &glyphs,
 					  const hb_set_t &klasses,
+                                          bool use_class_zero,
 					  hb_map_t *klass_map /*INOUT*/);
+
+
+struct hb_prune_langsys_context_t
+{
+  hb_prune_langsys_context_t (const void         *table_,
+                              hb_hashmap_t<unsigned, hb_set_t *, (unsigned)-1, nullptr> *script_langsys_map_,
+                              const hb_map_t     *duplicate_feature_map_,
+                              hb_set_t           *new_collected_feature_indexes_)
+      :table (table_),
+      script_langsys_map (script_langsys_map_),
+      duplicate_feature_map (duplicate_feature_map_),
+      new_feature_indexes (new_collected_feature_indexes_),
+      script_count (0),langsys_count (0) {}
+
+  bool visitedScript (const void *s)
+  {
+    if (script_count++ > HB_MAX_SCRIPTS)
+      return true;
+
+    return visited (s, visited_script);
+  }
+
+  bool visitedLangsys (const void *l)
+  {
+    if (langsys_count++ > HB_MAX_LANGSYS)
+      return true;
+
+    return visited (l, visited_langsys);
+  }
+
+  private:
+  template <typename T>
+  bool visited (const T *p, hb_set_t &visited_set)
+  {
+    hb_codepoint_t delta = (hb_codepoint_t) ((uintptr_t) p - (uintptr_t) table);
+     if (visited_set.has (delta))
+      return true;
+
+    visited_set.add (delta);
+    return false;
+  }
+
+  public:
+  const void *table;
+  hb_hashmap_t<unsigned, hb_set_t *, (unsigned)-1, nullptr> *script_langsys_map;
+  const hb_map_t     *duplicate_feature_map;
+  hb_set_t           *new_feature_indexes;
+
+  private:
+  hb_set_t visited_script;
+  hb_set_t visited_langsys;
+  unsigned script_count;
+  unsigned langsys_count;
+};
 
 struct hb_subset_layout_context_t :
   hb_dispatch_context_t<hb_subset_layout_context_t, hb_empty_t, HB_DEBUG_SUBSET>
@@ -125,16 +179,21 @@ struct hb_subset_layout_context_t :
   hb_subset_context_t *subset_context;
   const hb_tag_t table_tag;
   const hb_map_t *lookup_index_map;
+  const hb_hashmap_t<unsigned, hb_set_t *, (unsigned)-1, nullptr> *script_langsys_map;
   const hb_map_t *feature_index_map;
+  unsigned cur_script_index;
 
   hb_subset_layout_context_t (hb_subset_context_t *c_,
 			      hb_tag_t tag_,
 			      hb_map_t *lookup_map_,
-			      hb_map_t *feature_map_) :
+			      hb_hashmap_t<unsigned, hb_set_t *, (unsigned)-1, nullptr> *script_langsys_map_,
+			      hb_map_t *feature_index_map_) :
 				subset_context (c_),
 				table_tag (tag_),
 				lookup_index_map (lookup_map_),
-				feature_index_map (feature_map_),
+				script_langsys_map (script_langsys_map_),
+				feature_index_map (feature_index_map_),
+				cur_script_index (0xFFFFu),
 				script_count (0),
 				langsys_count (0),
 				feature_index_count (0),
@@ -407,6 +466,30 @@ struct RecordListOfFeature : RecordListOf<Feature>
   }
 };
 
+struct Script;
+struct RecordListOfScript : RecordListOf<Script>
+{
+  bool subset (hb_subset_context_t *c,
+               hb_subset_layout_context_t *l) const
+  {
+    TRACE_SUBSET (this);
+    auto *out = c->serializer->start_embed (*this);
+    if (unlikely (!out || !c->serializer->extend_min (out))) return_trace (false);
+
+    unsigned count = this->len;
+    for (auto _ : + hb_zip (*this, hb_range (count)))
+    {
+      auto snap = c->serializer->snapshot ();
+      l->cur_script_index = _.second;
+      bool ret = _.first.subset (l, this);
+      if (!ret) c->serializer->revert (snap);
+      else out->len++;
+    }
+
+    return_trace (true);
+  }
+};
+
 struct RangeRecord
 {
   int cmp (hb_codepoint_t g) const
@@ -506,16 +589,44 @@ struct LangSys
     return_trace (c->embed (*this));
   }
 
-  bool operator == (const LangSys& o) const
+  bool compare (const LangSys& o, const hb_map_t *feature_index_map) const
   {
-    if (featureIndex.len != o.featureIndex.len ||
-	reqFeatureIndex != o.reqFeatureIndex)
+    if (reqFeatureIndex != o.reqFeatureIndex)
       return false;
 
-    for (const auto _ : + hb_zip (featureIndex, o.featureIndex))
+    auto iter =
+    + hb_iter (featureIndex)
+    | hb_filter (feature_index_map)
+    | hb_map (feature_index_map)
+    ;
+
+    auto o_iter =
+    + hb_iter (o.featureIndex)
+    | hb_filter (feature_index_map)
+    | hb_map (feature_index_map)
+    ;
+
+    if (iter.len () != o_iter.len ())
+      return false;
+
+    for (const auto _ : + hb_zip (iter, o_iter))
       if (_.first != _.second) return false;
 
     return true;
+  }
+
+  void collect_features (hb_prune_langsys_context_t *c) const
+  {
+    if (!has_required_feature () && !get_feature_count ()) return;
+    if (c->visitedLangsys (this)) return;
+    if (has_required_feature () &&
+        c->duplicate_feature_map->has (reqFeatureIndex))
+      c->new_feature_indexes->add (get_required_feature_index ());
+
+    + hb_iter (featureIndex)
+    | hb_filter (c->duplicate_feature_map)
+    | hb_sink (c->new_feature_indexes)
+    ;
   }
 
   bool subset (hb_subset_context_t        *c,
@@ -581,6 +692,49 @@ struct Script
   bool has_default_lang_sys () const           { return defaultLangSys != 0; }
   const LangSys& get_default_lang_sys () const { return this+defaultLangSys; }
 
+  void prune_langsys (hb_prune_langsys_context_t *c,
+                      unsigned script_index) const
+  {
+    if (!has_default_lang_sys () && !get_lang_sys_count ()) return;
+    if (c->visitedScript (this)) return;
+
+    if (!c->script_langsys_map->has (script_index))
+    {
+      hb_set_t* empty_set = hb_set_create ();
+      if (unlikely (!c->script_langsys_map->set (script_index, empty_set)))
+      {
+	hb_set_destroy (empty_set);
+	return;
+      }
+    }
+
+    unsigned langsys_count = get_lang_sys_count ();
+    if (has_default_lang_sys ())
+    {
+      //only collect features from non-redundant langsys
+      const LangSys& d = get_default_lang_sys ();
+      d.collect_features (c);
+
+      for (auto _ : + hb_zip (langSys, hb_range (langsys_count)))
+      {
+        const LangSys& l = this+_.first.offset;
+        if (l.compare (d, c->duplicate_feature_map)) continue;
+
+        l.collect_features (c);
+        c->script_langsys_map->get (script_index)->add (_.second);
+      }
+    }
+    else
+    {
+      for (auto _ : + hb_zip (langSys, hb_range (langsys_count)))
+      {
+        const LangSys& l = this+_.first.offset;
+        l.collect_features (c);
+        c->script_langsys_map->get (script_index)->add (_.second);
+      }
+    }
+  }
+
   bool subset (hb_subset_context_t         *c,
 	       hb_subset_layout_context_t  *l,
 	       const Tag                   *tag) const
@@ -609,16 +763,17 @@ struct Script
       }
     }
 
-    + langSys.iter ()
-    | hb_filter ([=] (const Record<LangSys>& record) {return l->visitLangSys (); })
-    | hb_filter ([&] (const Record<LangSys>& record)
-		 {
-		   const LangSys& d = this+defaultLangSys;
-		   const LangSys& l = this+record.offset;
-		   return !(l == d);
-		 })
-    | hb_apply (subset_record_array (l, &(out->langSys), this))
-    ;
+    const hb_set_t *active_langsys = l->script_langsys_map->get (l->cur_script_index);
+    if (active_langsys)
+    {
+      unsigned count = langSys.len;
+      + hb_zip (langSys, hb_range (count))
+      | hb_filter (active_langsys, hb_second)
+      | hb_map (hb_first)
+      | hb_filter ([=] (const Record<LangSys>& record) {return l->visitLangSys (); })
+      | hb_apply (subset_record_array (l, &(out->langSys), this))
+      ;
+    }
 
     return_trace (bool (out->langSys.len) || defaultLang || l->table_tag == HB_OT_TAG_GSUB);
   }
@@ -641,7 +796,7 @@ struct Script
   DEFINE_SIZE_ARRAY_SIZED (4, langSys);
 };
 
-typedef RecordListOf<Script> ScriptList;
+typedef RecordListOfScript ScriptList;
 
 
 /* https://docs.microsoft.com/en-us/typography/opentype/spec/features_pt#size */
@@ -1128,7 +1283,7 @@ struct Lookup
     out->lookupType = lookupType;
     out->lookupFlag = lookupFlag;
 
-    const hb_set_t *glyphset = c->plan->glyphset ();
+    const hb_set_t *glyphset = c->plan->glyphset_gsub ();
     unsigned int lookup_type = get_type ();
     + hb_iter (get_subtables <TSubTable> ())
     | hb_filter ([this, glyphset, lookup_type] (const OffsetTo<TSubTable> &_) { return (this+_).intersects (glyphset, lookup_type); })
@@ -1260,6 +1415,14 @@ struct CoverageFormat1
   bool intersects_coverage (const hb_set_t *glyphs, unsigned int index) const
   { return glyphs->has (glyphArray[index]); }
 
+  void intersected_coverage_glyphs (const hb_set_t *glyphs, hb_set_t *intersect_glyphs) const
+  {
+    unsigned count = glyphArray.len;
+    for (unsigned i = 0; i < count; i++)
+      if (glyphs->has (glyphArray[i]))
+        intersect_glyphs->add (glyphArray[i]);
+  }
+
   template <typename set_t>
   bool collect_coverage (set_t *glyphs) const
   { return glyphs->add_sorted_array (glyphArray.arrayZ, glyphArray.len); }
@@ -1380,6 +1543,18 @@ struct CoverageFormat2
 	return false;
     }
     return false;
+  }
+
+  void intersected_coverage_glyphs (const hb_set_t *glyphs, hb_set_t *intersect_glyphs) const
+  {
+    unsigned count = rangeRecord.len;
+    for (unsigned i = 0; i < count; i++)
+    {
+      const RangeRecord &range = rangeRecord[i];
+      if (!range.intersects (glyphs)) continue;
+      for (hb_codepoint_t g = range.first; g <= range.last; g++)
+        if (glyphs->has (g)) intersect_glyphs->add (g);
+    }
   }
 
   template <typename set_t>
@@ -1506,7 +1681,7 @@ struct Coverage
   bool subset (hb_subset_context_t *c) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->glyphset ();
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     auto it =
@@ -1561,6 +1736,16 @@ struct Coverage
     case 1: return u.format1.collect_coverage (glyphs);
     case 2: return u.format2.collect_coverage (glyphs);
     default:return false;
+    }
+  }
+
+  void intersected_coverage_glyphs (const hb_set_t *glyphs, hb_set_t *intersect_glyphs) const
+  {
+    switch (u.format)
+    {
+    case 1: return u.format1.intersected_coverage_glyphs (glyphs, intersect_glyphs);
+    case 2: return u.format2.intersected_coverage_glyphs (glyphs, intersect_glyphs);
+    default:return ;
     }
   }
 
@@ -1645,10 +1830,10 @@ Coverage_serialize (hb_serialize_context_t *c,
 { c->start_embed<Coverage> ()->serialize (c, it); }
 
 static void ClassDef_remap_and_serialize (hb_serialize_context_t *c,
-					  const hb_set_t &glyphset,
 					  const hb_map_t &gid_klass_map,
 					  hb_sorted_vector_t<HBGlyphID> &glyphs,
 					  const hb_set_t &klasses,
+                                          bool use_class_zero,
 					  hb_map_t *klass_map /*INOUT*/)
 {
   if (!klass_map)
@@ -1660,7 +1845,7 @@ static void ClassDef_remap_and_serialize (hb_serialize_context_t *c,
 
   /* any glyph not assigned a class value falls into Class zero (0),
    * if any glyph assigned to class 0, remapping must start with 0->0*/
-  if (glyphset.get_population () > gid_klass_map.get_population ())
+  if (!use_class_zero)
     klass_map->set (0, 0);
 
   unsigned idx = klass_map->has (0) ? 1 : 0;
@@ -1730,10 +1915,12 @@ struct ClassDefFormat1
   }
 
   bool subset (hb_subset_context_t *c,
-	       hb_map_t *klass_map = nullptr /*OUT*/) const
+	       hb_map_t *klass_map = nullptr /*OUT*/,
+               bool use_class_zero = true,
+               const Coverage* glyph_filter = nullptr) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->_glyphset_gsub;
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     hb_sorted_vector_t<HBGlyphID> glyphs;
@@ -1742,9 +1929,12 @@ struct ClassDefFormat1
 
     hb_codepoint_t start = startGlyph;
     hb_codepoint_t end   = start + classValue.len;
+
     for (const hb_codepoint_t gid : + hb_range (start, end)
-				    | hb_filter (glyphset))
+                                    | hb_filter (glyphset))
     {
+      if (glyph_filter && !glyph_filter->has(gid)) continue;
+
       unsigned klass = classValue[gid - start];
       if (!klass) continue;
 
@@ -1753,8 +1943,12 @@ struct ClassDefFormat1
       orig_klasses.add (klass);
     }
 
-    ClassDef_remap_and_serialize (c->serializer, glyphset, gid_org_klass_map,
-				  glyphs, orig_klasses, klass_map);
+    unsigned glyph_count = glyph_filter
+                           ? hb_len (hb_iter (glyphset) | hb_filter (glyph_filter))
+                           : glyphset.get_population ();
+    use_class_zero = use_class_zero && glyph_count <= gid_org_klass_map.get_population ();
+    ClassDef_remap_and_serialize (c->serializer, gid_org_klass_map,
+				  glyphs, orig_klasses, use_class_zero, klass_map);
     return_trace ((bool) glyphs);
   }
 
@@ -1788,7 +1982,7 @@ struct ClassDefFormat1
   }
 
   template <typename set_t>
-  bool collect_class (set_t *glyphs, unsigned int klass) const
+  bool collect_class (set_t *glyphs, unsigned klass) const
   {
     unsigned int count = classValue.len;
     for (unsigned int i = 0; i < count; i++)
@@ -1806,7 +2000,7 @@ struct ClassDefFormat1
       if (classValue[iter - start]) return true;
     return false;
   }
-  bool intersects_class (const hb_set_t *glyphs, unsigned int klass) const
+  bool intersects_class (const hb_set_t *glyphs, uint16_t klass) const
   {
     unsigned int count = classValue.len;
     if (klass == 0)
@@ -1821,13 +2015,30 @@ struct ClassDefFormat1
     }
     /* TODO Speed up, using set overlap first? */
     /* TODO(iter) Rewrite as dagger. */
-    HBUINT16 k; /* TODO(constexpr) use constructor to initialize. */
-    k = klass;
+    HBUINT16 k {klass};
     const HBUINT16 *arr = classValue.arrayZ;
     for (unsigned int i = 0; i < count; i++)
       if (arr[i] == k && glyphs->has (startGlyph + i))
 	return true;
     return false;
+  }
+
+  void intersected_class_glyphs (const hb_set_t *glyphs, unsigned klass, hb_set_t *intersect_glyphs) const
+  {
+    unsigned count = classValue.len;
+    if (klass == 0)
+    {
+      hb_codepoint_t endGlyph = startGlyph + count -1;
+      for (hb_codepoint_t g : glyphs->iter ())
+        if (g < startGlyph || g > endGlyph)
+          intersect_glyphs->add (g);
+
+      return;
+    }
+
+    for (unsigned i = 0; i < count; i++)
+      if (classValue[i] == klass && glyphs->has (startGlyph + i))
+        intersect_glyphs->add (startGlyph + i);
   }
 
   protected:
@@ -1904,10 +2115,12 @@ struct ClassDefFormat2
   }
 
   bool subset (hb_subset_context_t *c,
-	       hb_map_t *klass_map = nullptr /*OUT*/) const
+	       hb_map_t *klass_map = nullptr /*OUT*/,
+               bool use_class_zero = true,
+               const Coverage* glyph_filter = nullptr) const
   {
     TRACE_SUBSET (this);
-    const hb_set_t &glyphset = *c->plan->_glyphset_gsub;
+    const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
     hb_sorted_vector_t<HBGlyphID> glyphs;
@@ -1924,14 +2137,19 @@ struct ClassDefFormat2
       for (hb_codepoint_t g = start; g < end; g++)
       {
 	if (!glyphset.has (g)) continue;
+        if (glyph_filter && !glyph_filter->has (g)) continue;
 	glyphs.push (glyph_map[g]);
 	gid_org_klass_map.set (glyph_map[g], klass);
 	orig_klasses.add (klass);
       }
     }
 
-    ClassDef_remap_and_serialize (c->serializer, glyphset, gid_org_klass_map,
-				  glyphs, orig_klasses, klass_map);
+    unsigned glyph_count = glyph_filter
+                           ? hb_len (hb_iter (glyphset) | hb_filter (glyph_filter))
+                           : glyphset.get_population ();
+    use_class_zero = use_class_zero && glyph_count <= gid_org_klass_map.get_population ();
+    ClassDef_remap_and_serialize (c->serializer, gid_org_klass_map,
+				  glyphs, orig_klasses, use_class_zero, klass_map);
     return_trace ((bool) glyphs);
   }
 
@@ -1970,11 +2188,14 @@ struct ClassDefFormat2
     /* TODO Speed up, using hb_set_next() and bsearch()? */
     unsigned int count = rangeRecord.len;
     for (unsigned int i = 0; i < count; i++)
-      if (rangeRecord[i].intersects (glyphs))
+    {
+      const auto& range = rangeRecord[i];
+      if (range.intersects (glyphs) && range.value)
 	return true;
+    }
     return false;
   }
-  bool intersects_class (const hb_set_t *glyphs, unsigned int klass) const
+  bool intersects_class (const hb_set_t *glyphs, uint16_t klass) const
   {
     unsigned int count = rangeRecord.len;
     if (klass == 0)
@@ -1995,13 +2216,60 @@ struct ClassDefFormat2
     }
     /* TODO Speed up, using set overlap first? */
     /* TODO(iter) Rewrite as dagger. */
-    HBUINT16 k; /* TODO(constexpr) use constructor to initialize. */
-    k = klass;
+    HBUINT16 k {klass};
     const RangeRecord *arr = rangeRecord.arrayZ;
     for (unsigned int i = 0; i < count; i++)
       if (arr[i].value == k && arr[i].intersects (glyphs))
 	return true;
     return false;
+  }
+
+  void intersected_class_glyphs (const hb_set_t *glyphs, unsigned klass, hb_set_t *intersect_glyphs) const
+  {
+    unsigned count = rangeRecord.len;
+    if (klass == 0)
+    {
+      hb_codepoint_t g = HB_SET_VALUE_INVALID;
+      for (unsigned int i = 0; i < count; i++)
+      {
+        if (!hb_set_next (glyphs, &g))
+          break;
+        while (g != HB_SET_VALUE_INVALID && g < rangeRecord[i].first)
+        {
+          intersect_glyphs->add (g);
+          hb_set_next (glyphs, &g);
+        }
+        g = rangeRecord[i].last;
+      }
+      while (g != HB_SET_VALUE_INVALID && hb_set_next (glyphs, &g))
+        intersect_glyphs->add (g);
+
+      return;
+    }
+
+    hb_codepoint_t g = HB_SET_VALUE_INVALID;
+    for (unsigned int i = 0; i < count; i++)
+    {
+      if (rangeRecord[i].value != klass) continue;
+
+      if (g != HB_SET_VALUE_INVALID)
+      {
+        if (g >= rangeRecord[i].first &&
+            g <= rangeRecord[i].last)
+          intersect_glyphs->add (g);
+        if (g > rangeRecord[i].last)
+          continue;
+      }
+
+      g = rangeRecord[i].first - 1;
+      while (hb_set_next (glyphs, &g))
+      {
+        if (g >= rangeRecord[i].first && g <= rangeRecord[i].last)
+          intersect_glyphs->add (g);
+        else if (g > rangeRecord[i].last)
+          break;
+      }
+    }
   }
 
   protected:
@@ -2044,10 +2312,9 @@ struct ClassDef
     if (likely (it))
     {
       hb_codepoint_t glyph_min = (*it).first;
-      hb_codepoint_t glyph_max = + it
-				 | hb_map (hb_first)
-				 | hb_reduce (hb_max, 0u);
+      hb_codepoint_t glyph_max = glyph_min;
 
+      unsigned num_glyphs = 0;
       unsigned num_ranges = 1;
       hb_codepoint_t prev_gid = glyph_min;
       unsigned prev_klass = (*it).second;
@@ -2056,7 +2323,9 @@ struct ClassDef
       {
 	hb_codepoint_t cur_gid = gid_klass_pair.first;
 	unsigned cur_klass = gid_klass_pair.second;
+        if (cur_klass) num_glyphs++;
 	if (cur_gid == glyph_min || !cur_klass) continue;
+        if (cur_gid > glyph_max) glyph_max = cur_gid;
 	if (cur_gid != prev_gid + 1 ||
 	    cur_klass != prev_klass)
 	  num_ranges++;
@@ -2065,7 +2334,7 @@ struct ClassDef
 	prev_klass = cur_klass;
       }
 
-      if (1 + (glyph_max - glyph_min + 1) <= num_ranges * 3)
+      if (num_glyphs && 1 + (glyph_max - glyph_min + 1) <= num_ranges * 3)
 	format = 1;
     }
     u.format = format;
@@ -2079,12 +2348,14 @@ struct ClassDef
   }
 
   bool subset (hb_subset_context_t *c,
-	       hb_map_t *klass_map = nullptr /*OUT*/) const
+	       hb_map_t *klass_map = nullptr /*OUT*/,
+               bool use_class_zero = true,
+               const Coverage* glyph_filter = nullptr) const
   {
     TRACE_SUBSET (this);
     switch (u.format) {
-    case 1: return_trace (u.format1.subset (c, klass_map));
-    case 2: return_trace (u.format2.subset (c, klass_map));
+    case 1: return_trace (u.format1.subset (c, klass_map, use_class_zero, glyph_filter));
+    case 2: return_trace (u.format2.subset (c, klass_map, use_class_zero, glyph_filter));
     default:return_trace (false);
     }
   }
@@ -2138,6 +2409,15 @@ struct ClassDef
     case 1: return u.format1.intersects_class (glyphs, klass);
     case 2: return u.format2.intersects_class (glyphs, klass);
     default:return false;
+    }
+  }
+
+  void intersected_class_glyphs (const hb_set_t *glyphs, unsigned klass, hb_set_t *intersect_glyphs) const
+  {
+    switch (u.format) {
+    case 1: return u.format1.intersected_class_glyphs (glyphs, klass, intersect_glyphs);
+    case 2: return u.format2.intersected_class_glyphs (glyphs, klass, intersect_glyphs);
+    default:return;
     }
   }
 
