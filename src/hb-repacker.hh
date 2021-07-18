@@ -75,7 +75,8 @@ struct graph_t
       // setting distance = 0 which will force to sort immediately after
       // it's parent where possible.
 
-      int64_t modified_distance = distance + distance_modifier ();
+      int64_t modified_distance =
+          hb_min (hb_max(distance + distance_modifier (), 0), 0x7FFFFFFFFF);
       return (modified_distance << 24) | (0x00FFFFFF & order);
     }
 
@@ -101,7 +102,7 @@ struct graph_t
     {
       fini ();
       unsigned size = object.tail - object.head;
-      head = (char*) malloc (size);
+      head = (char*) hb_malloc (size);
       if (!head) return false;
 
       memcpy (head, object.head, size);
@@ -115,7 +116,7 @@ struct graph_t
     void fini ()
     {
       if (!head) return;
-      free (head);
+      hb_free (head);
       head = nullptr;
     }
   };
@@ -147,7 +148,8 @@ struct graph_t
       }
 
       vertex_t* v = vertices_.push ();
-      v->obj = *objects[i];
+      if (check_success (!vertices_.in_error ()))
+        v->obj = *objects[i];
       if (!removed_nil) continue;
       for (unsigned i = 0; i < v->obj.links.length; i++)
         // Fix indices to account for removed nil object.
@@ -225,10 +227,10 @@ struct graph_t
     hb_vector_t<unsigned> queue;
     hb_vector_t<vertex_t> sorted_graph;
     hb_vector_t<unsigned> id_map;
-    check_success (id_map.resize (vertices_.length));
+    if (unlikely (!check_success (id_map.resize (vertices_.length)))) return;
 
     hb_vector_t<unsigned> removed_edges;
-    check_success (removed_edges.resize (vertices_.length));
+    if (unlikely (!check_success (removed_edges.resize (vertices_.length)))) return;
     update_incoming_edge_count ();
 
     queue.push (root_idx ());
@@ -282,10 +284,10 @@ struct graph_t
     hb_priority_queue_t queue;
     hb_vector_t<vertex_t> sorted_graph;
     hb_vector_t<unsigned> id_map;
-    check_success (id_map.resize (vertices_.length));
+    if (unlikely (!check_success (id_map.resize (vertices_.length)))) return;
 
     hb_vector_t<unsigned> removed_edges;
-    check_success (removed_edges.resize (vertices_.length));
+    if (unlikely (!check_success (removed_edges.resize (vertices_.length)))) return;
     update_incoming_edge_count ();
 
     queue.insert (root ().modified_distance (0), root_idx ());
@@ -341,7 +343,9 @@ struct graph_t
     auto* clone = vertices_.push ();
     auto& child = vertices_[child_idx];
     clone_buffer_t* buffer = clone_buffers_.push ();
-    if (!check_success (buffer->copy (child.obj))) {
+    if (vertices_.in_error ()
+        || clone_buffers_.in_error ()
+        || !check_success (buffer->copy (child.obj))) {
       return;
     }
 
@@ -527,7 +531,7 @@ struct graph_t
 
         const auto& child = vertices_[link.objidx].obj;
         int64_t child_weight = child.tail - child.head +
-                               (!link.is_wide ? (1 << 16) : ((int64_t) 1 << 32));
+                               ((int64_t) 1 << (link.width * 8));
         int64_t child_distance = next_distance + child_weight;
 
         if (child_distance < vertices_[link.objidx].distance)
@@ -574,15 +578,17 @@ struct graph_t
   {
     if (link.is_signed)
     {
-      if (link.is_wide)
+      if (link.width == 4)
         return offset >= -((int64_t) 1 << 31) && offset < ((int64_t) 1 << 31);
       else
         return offset >= -(1 << 15) && offset < (1 << 15);
     }
     else
     {
-      if (link.is_wide)
+      if (link.width == 4)
         return offset >= 0 && offset < ((int64_t) 1 << 32);
+      else if (link.width == 3)
+        return offset >= 0 && offset < ((int32_t) 1 << 24);
       else
         return offset >= 0 && offset < (1 << 16);
     }
@@ -623,21 +629,30 @@ struct graph_t
                  char* head,
                  hb_serialize_context_t* c) const
   {
-    if (link.is_wide)
+    switch (link.width)
     {
+    case 4:
       if (link.is_signed)
       {
         serialize_link_of_type<OT::HBINT32> (link, head, c);
       } else {
         serialize_link_of_type<OT::HBUINT32> (link, head, c);
       }
-    } else {
+      return;
+    case 2:
       if (link.is_signed)
       {
         serialize_link_of_type<OT::HBINT16> (link, head, c);
       } else {
         serialize_link_of_type<OT::HBUINT16> (link, head, c);
       }
+      return;
+    case 3:
+      serialize_link_of_type<OT::HBUINT24> (link, head, c);
+      return;
+    default:
+      // Unexpected link width.
+      assert (0);
     }
   }
 

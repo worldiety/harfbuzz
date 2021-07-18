@@ -19,14 +19,19 @@ tests = [
   'layout.gsub6',
   'layout.gsub8',
   'layout.gdef',
+  'layout.khmer',
   'layout.context',
   'layout.gdef-varstore',
   'layout.gdef-attachlist',
+  'layout.notonastaliqurdu',
   'cmap',
   'cmap14',
   'sbix',
   'colr',
+  'colrv1.notoemoji',
+  'colr_with_components',
   'cbdt',
+  'variable',
 ]
 
 repack_tests = [

@@ -26,15 +26,20 @@ EXTRA_DIST += \
 	expected/layout.gsub5 \
 	expected/layout.gsub6 \
 	expected/layout.gsub8 \
+	expected/layout.khmer \
 	expected/layout.gdef \
 	expected/layout.context \
 	expected/layout.gdef-varstore \
 	expected/layout.gdef-attachlist \
+	expected/layout.notonastaliqurdu \
 	expected/cmap \
 	expected/cmap14 \
 	expected/sbix \
 	expected/colr \
+	expected/colr_with_components \
+	expected/colrv1.notoemoji \
 	expected/cbdt \
+	expected/variable \
 	fonts \
 	profiles \
 	$(NULL)

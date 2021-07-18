@@ -101,7 +101,7 @@ struct SingleSubstFormat1
   {
     TRACE_SERIALIZE (this);
     if (unlikely (!c->extend_min (*this))) return_trace (false);
-    if (unlikely (!coverage.serialize (c, this).serialize (c, glyphs))) return_trace (false);
+    if (unlikely (!coverage.serialize_serialize (c, glyphs))) return_trace (false);
     c->check_assign (deltaGlyphID, delta, HB_SERIALIZE_ERROR_INT_OVERFLOW);
     return_trace (true);
   }
@@ -138,7 +138,7 @@ struct SingleSubstFormat1
 
   protected:
   HBUINT16	format;			/* Format identifier--format = 1 */
-  OffsetTo<Coverage>
+  Offset16To<Coverage>
 		coverage;		/* Offset to Coverage table--from
 					 * beginning of Substitution table */
   HBUINT16	deltaGlyphID;		/* Add to original GlyphID to get
@@ -211,7 +211,7 @@ struct SingleSubstFormat2
       ;
     if (unlikely (!c->extend_min (*this))) return_trace (false);
     if (unlikely (!substitute.serialize (c, substitutes))) return_trace (false);
-    if (unlikely (!coverage.serialize (c, this).serialize (c, glyphs))) return_trace (false);
+    if (unlikely (!coverage.serialize_serialize (c, glyphs))) return_trace (false);
     return_trace (true);
   }
 
@@ -242,10 +242,10 @@ struct SingleSubstFormat2
 
   protected:
   HBUINT16	format;			/* Format identifier--format = 2 */
-  OffsetTo<Coverage>
+  Offset16To<Coverage>
 		coverage;		/* Offset to Coverage table--from
 					 * beginning of Substitution table */
-  ArrayOf<HBGlyphID>
+  Array16Of<HBGlyphID>
 		substitute;		/* Array of substitute
 					 * GlyphIDs--ordered by Coverage Index */
   public:
@@ -386,7 +386,7 @@ struct Sequence
   }
 
   protected:
-  ArrayOf<HBGlyphID>
+  Array16Of<HBGlyphID>
 		substitute;		/* String of GlyphIDs to substitute */
   public:
   DEFINE_SIZE_ARRAY (2, substitute);
@@ -449,12 +449,12 @@ struct MultipleSubstFormat1
     for (unsigned int i = 0; i < glyphs.length; i++)
     {
       unsigned int substitute_len = substitute_len_list[i];
-      if (unlikely (!sequence[i].serialize (c, this)
-				.serialize (c, substitute_glyphs_list.sub_array (0, substitute_len))))
+      if (unlikely (!sequence[i]
+                        .serialize_serialize (c, substitute_glyphs_list.sub_array (0, substitute_len))))
 	return_trace (false);
       substitute_glyphs_list += substitute_len;
     }
-    return_trace (coverage.serialize (c, this).serialize (c, glyphs));
+    return_trace (coverage.serialize_serialize (c, glyphs));
   }
 
   bool subset (hb_subset_context_t *c) const
@@ -475,8 +475,7 @@ struct MultipleSubstFormat1
     | hb_map (glyph_map)
     | hb_sink (new_coverage)
     ;
-    out->coverage.serialize (c->serializer, out)
-		 .serialize (c->serializer, new_coverage.iter ());
+    out->coverage.serialize_serialize (c->serializer, new_coverage.iter ());
     return_trace (bool (new_coverage));
   }
 
@@ -488,10 +487,10 @@ struct MultipleSubstFormat1
 
   protected:
   HBUINT16	format;			/* Format identifier--format = 1 */
-  OffsetTo<Coverage>
+  Offset16To<Coverage>
 		coverage;		/* Offset to Coverage table--from
 					 * beginning of Substitution table */
-  OffsetArrayOf<Sequence>
+  Array16OfOffset16To<Sequence>
 		sequence;		/* Array of Sequence tables
 					 * ordered by Coverage Index */
   public:
@@ -616,7 +615,7 @@ struct AlternateSet
   }
 
   protected:
-  ArrayOf<HBGlyphID>
+  Array16Of<HBGlyphID>
 		alternates;		/* Array of alternate GlyphIDs--in
 					 * arbitrary order */
   public:
@@ -688,12 +687,12 @@ struct AlternateSubstFormat1
     for (unsigned int i = 0; i < glyphs.length; i++)
     {
       unsigned int alternate_len = alternate_len_list[i];
-      if (unlikely (!alternateSet[i].serialize (c, this)
-				    .serialize (c, alternate_glyphs_list.sub_array (0, alternate_len))))
+      if (unlikely (!alternateSet[i]
+                        .serialize_serialize (c, alternate_glyphs_list.sub_array (0, alternate_len))))
 	return_trace (false);
       alternate_glyphs_list += alternate_len;
     }
-    return_trace (coverage.serialize (c, this).serialize (c, glyphs));
+    return_trace (coverage.serialize_serialize (c, glyphs));
   }
 
   bool subset (hb_subset_context_t *c) const
@@ -714,8 +713,7 @@ struct AlternateSubstFormat1
     | hb_map (glyph_map)
     | hb_sink (new_coverage)
     ;
-    out->coverage.serialize (c->serializer, out)
-		 .serialize (c->serializer, new_coverage.iter ());
+    out->coverage.serialize_serialize (c->serializer, new_coverage.iter ());
     return_trace (bool (new_coverage));
   }
 
@@ -727,10 +725,10 @@ struct AlternateSubstFormat1
 
   protected:
   HBUINT16	format;			/* Format identifier--format = 1 */
-  OffsetTo<Coverage>
+  Offset16To<Coverage>
 		coverage;		/* Offset to Coverage table--from
 					 * beginning of Substitution table */
-  OffsetArrayOf<AlternateSet>
+  Array16OfOffset16To<AlternateSet>
 		alternateSet;		/* Array of AlternateSet tables
 					 * ordered by Coverage Index */
   public:
@@ -952,10 +950,9 @@ struct LigatureSet
     for (unsigned int i = 0; i < ligatures.length; i++)
     {
       unsigned int component_count = (unsigned) hb_max ((int) component_count_list[i] - 1, 0);
-      if (unlikely (!ligature[i].serialize (c, this)
-				.serialize (c,
-					    ligatures[i],
-					    component_list.sub_array (0, component_count))))
+      if (unlikely (!ligature[i].serialize_serialize (c,
+                                                      ligatures[i],
+                                                      component_list.sub_array (0, component_count))))
 	return_trace (false);
       component_list += component_count;
     }
@@ -982,7 +979,7 @@ struct LigatureSet
   }
 
   protected:
-  OffsetArrayOf<Ligature>
+  Array16OfOffset16To<Ligature>
 		ligature;		/* Array LigatureSet tables
 					 * ordered by preference */
   public:
@@ -997,7 +994,7 @@ struct LigatureSubstFormat1
     + hb_zip (this+coverage, ligatureSet)
     | hb_filter (*glyphs, hb_first)
     | hb_map (hb_second)
-    | hb_map ([this, glyphs] (const OffsetTo<LigatureSet> &_)
+    | hb_map ([this, glyphs] (const Offset16To<LigatureSet> &_)
 	      { return (this+_).intersects (glyphs); })
     | hb_any
     ;
@@ -1065,15 +1062,15 @@ struct LigatureSubstFormat1
     for (unsigned int i = 0; i < first_glyphs.length; i++)
     {
       unsigned int ligature_count = ligature_per_first_glyph_count_list[i];
-      if (unlikely (!ligatureSet[i].serialize (c, this)
-				   .serialize (c,
-					       ligatures_list.sub_array (0, ligature_count),
-					       component_count_list.sub_array (0, ligature_count),
-					       component_list))) return_trace (false);
+      if (unlikely (!ligatureSet[i]
+                        .serialize_serialize (c,
+                                              ligatures_list.sub_array (0, ligature_count),
+                                              component_count_list.sub_array (0, ligature_count),
+                                              component_list))) return_trace (false);
       ligatures_list += ligature_count;
       component_count_list += ligature_count;
     }
-    return_trace (coverage.serialize (c, this).serialize (c, first_glyphs));
+    return_trace (coverage.serialize_serialize (c, first_glyphs));
   }
 
   bool subset (hb_subset_context_t *c) const
@@ -1094,8 +1091,7 @@ struct LigatureSubstFormat1
     | hb_map (glyph_map)
     | hb_sink (new_coverage)
     ;
-    out->coverage.serialize (c->serializer, out)
-		 .serialize (c->serializer, new_coverage.iter ());
+    out->coverage.serialize_serialize (c->serializer, new_coverage.iter ());
     return_trace (bool (new_coverage));
   }
 
@@ -1107,10 +1103,10 @@ struct LigatureSubstFormat1
 
   protected:
   HBUINT16	format;			/* Format identifier--format = 1 */
-  OffsetTo<Coverage>
+  Offset16To<Coverage>
 		coverage;		/* Offset to Coverage table--from
 					 * beginning of Substitution table */
-  OffsetArrayOf<LigatureSet>
+  Array16OfOffset16To<LigatureSet>
 		ligatureSet;		/* Array LigatureSet tables
 					 * ordered by Coverage Index */
   public:
@@ -1178,7 +1174,7 @@ struct ReverseChainSingleSubstFormat1
     if (!(this+coverage).intersects (glyphs))
       return false;
 
-    const OffsetArrayOf<Coverage> &lookahead = StructAfter<OffsetArrayOf<Coverage>> (backtrack);
+    const Array16OfOffset16To<Coverage> &lookahead = StructAfter<Array16OfOffset16To<Coverage>> (backtrack);
 
     unsigned int count;
 
@@ -1202,8 +1198,8 @@ struct ReverseChainSingleSubstFormat1
   {
     if (!intersects (c->glyphs)) return;
 
-    const OffsetArrayOf<Coverage> &lookahead = StructAfter<OffsetArrayOf<Coverage>> (backtrack);
-    const ArrayOf<HBGlyphID> &substitute = StructAfter<ArrayOf<HBGlyphID>> (lookahead);
+    const Array16OfOffset16To<Coverage> &lookahead = StructAfter<Array16OfOffset16To<Coverage>> (backtrack);
+    const Array16Of<HBGlyphID> &substitute = StructAfter<Array16Of<HBGlyphID>> (lookahead);
 
     + hb_zip (this+coverage, substitute)
     | hb_filter (c->parent_active_glyphs (), hb_first)
@@ -1224,12 +1220,12 @@ struct ReverseChainSingleSubstFormat1
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!(this+backtrack[i]).collect_coverage (c->before))) return;
 
-    const OffsetArrayOf<Coverage> &lookahead = StructAfter<OffsetArrayOf<Coverage>> (backtrack);
+    const Array16OfOffset16To<Coverage> &lookahead = StructAfter<Array16OfOffset16To<Coverage>> (backtrack);
     count = lookahead.len;
     for (unsigned int i = 0; i < count; i++)
       if (unlikely (!(this+lookahead[i]).collect_coverage (c->after))) return;
 
-    const ArrayOf<HBGlyphID> &substitute = StructAfter<ArrayOf<HBGlyphID>> (lookahead);
+    const Array16Of<HBGlyphID> &substitute = StructAfter<Array16Of<HBGlyphID>> (lookahead);
     count = substitute.len;
     c->output->add_array (substitute.arrayZ, substitute.len);
   }
@@ -1248,8 +1244,8 @@ struct ReverseChainSingleSubstFormat1
     unsigned int index = (this+coverage).get_coverage (c->buffer->cur ().codepoint);
     if (likely (index == NOT_COVERED)) return_trace (false);
 
-    const OffsetArrayOf<Coverage> &lookahead = StructAfter<OffsetArrayOf<Coverage>> (backtrack);
-    const ArrayOf<HBGlyphID> &substitute = StructAfter<ArrayOf<HBGlyphID>> (lookahead);
+    const Array16OfOffset16To<Coverage> &lookahead = StructAfter<Array16OfOffset16To<Coverage>> (backtrack);
+    const Array16Of<HBGlyphID> &substitute = StructAfter<Array16Of<HBGlyphID>> (lookahead);
 
     if (unlikely (index >= substitute.len)) return_trace (false);
 
@@ -1279,7 +1275,7 @@ struct ReverseChainSingleSubstFormat1
   bool serialize_coverage_offset_array (hb_subset_context_t *c, Iterator it) const
   {
     TRACE_SERIALIZE (this);
-    auto *out = c->serializer->start_embed<OffsetArrayOf<Coverage>> ();
+    auto *out = c->serializer->start_embed<Array16OfOffset16To<Coverage>> ();
 
     if (unlikely (!c->serializer->allocate_size<HBUINT16> (HBUINT16::static_size)))
       return_trace (false);
@@ -1312,7 +1308,7 @@ struct ReverseChainSingleSubstFormat1
     if (!serialize_coverage_offset_array (c, backtrack_iter)) return_trace (false);
     if (!serialize_coverage_offset_array (c, lookahead_iter)) return_trace (false);
 
-    auto *substitute_out = c->serializer->start_embed<ArrayOf<HBGlyphID>> ();
+    auto *substitute_out = c->serializer->start_embed<Array16Of<HBGlyphID>> ();
     auto substitutes =
     + coverage_subst_iter
     | hb_map (hb_second)
@@ -1325,7 +1321,7 @@ struct ReverseChainSingleSubstFormat1
     if (unlikely (! c->serializer->check_success (substitute_out->serialize (c->serializer, substitutes))))
         return_trace (false);
 
-    if (unlikely (!out->coverage.serialize (c->serializer, out).serialize (c->serializer, glyphs)))
+    if (unlikely (!out->coverage.serialize_serialize (c->serializer, glyphs)))
       return_trace (false);
     return_trace (true);
   }
@@ -1336,8 +1332,8 @@ struct ReverseChainSingleSubstFormat1
     const hb_set_t &glyphset = *c->plan->glyphset_gsub ();
     const hb_map_t &glyph_map = *c->plan->glyph_map;
 
-    const OffsetArrayOf<Coverage> &lookahead = StructAfter<OffsetArrayOf<Coverage>> (backtrack);
-    const ArrayOf<HBGlyphID> &substitute = StructAfter<ArrayOf<HBGlyphID>> (lookahead);
+    const Array16OfOffset16To<Coverage> &lookahead = StructAfter<Array16OfOffset16To<Coverage>> (backtrack);
+    const Array16Of<HBGlyphID> &substitute = StructAfter<Array16Of<HBGlyphID>> (lookahead);
 
     auto it =
     + hb_zip (this+coverage, substitute)
@@ -1355,27 +1351,27 @@ struct ReverseChainSingleSubstFormat1
     TRACE_SANITIZE (this);
     if (!(coverage.sanitize (c, this) && backtrack.sanitize (c, this)))
       return_trace (false);
-    const OffsetArrayOf<Coverage> &lookahead = StructAfter<OffsetArrayOf<Coverage>> (backtrack);
+    const Array16OfOffset16To<Coverage> &lookahead = StructAfter<Array16OfOffset16To<Coverage>> (backtrack);
     if (!lookahead.sanitize (c, this))
       return_trace (false);
-    const ArrayOf<HBGlyphID> &substitute = StructAfter<ArrayOf<HBGlyphID>> (lookahead);
+    const Array16Of<HBGlyphID> &substitute = StructAfter<Array16Of<HBGlyphID>> (lookahead);
     return_trace (substitute.sanitize (c));
   }
 
   protected:
   HBUINT16	format;			/* Format identifier--format = 1 */
-  OffsetTo<Coverage>
+  Offset16To<Coverage>
 		coverage;		/* Offset to Coverage table--from
 					 * beginning of table */
-  OffsetArrayOf<Coverage>
+  Array16OfOffset16To<Coverage>
 		backtrack;		/* Array of coverage tables
 					 * in backtracking sequence, in glyph
 					 * sequence order */
-  OffsetArrayOf<Coverage>
+  Array16OfOffset16To<Coverage>
 		lookaheadX;		/* Array of coverage tables
 					 * in lookahead sequence, in glyph
 					 * sequence order */
-  ArrayOf<HBGlyphID>
+  Array16Of<HBGlyphID>
 		substituteX;		/* Array of substitute
 					 * GlyphIDs--ordered by Coverage Index */
   public:
@@ -1554,10 +1550,6 @@ struct SubstLookup : Lookup
 
   static inline bool apply_recurse_func (hb_ot_apply_context_t *c, unsigned int lookup_index);
 
-  SubTable& serialize_subtable (hb_serialize_context_t *c,
-				unsigned int i)
-  { return get_subtables<SubTable> ()[i].serialize (c, this); }
-
   bool serialize_single (hb_serialize_context_t *c,
 			 uint32_t lookup_props,
 			 hb_sorted_array_t<const HBGlyphID> glyphs,
@@ -1565,8 +1557,13 @@ struct SubstLookup : Lookup
   {
     TRACE_SERIALIZE (this);
     if (unlikely (!Lookup::serialize (c, SubTable::Single, lookup_props, 1))) return_trace (false);
-    return_trace (serialize_subtable (c, 0).u.single.
-		  serialize (c, hb_zip (glyphs, substitutes)));
+    if (c->push<SubTable> ()->u.single.serialize (c, hb_zip (glyphs, substitutes)))
+    {
+      c->add_link (get_subtables<SubTable> ()[0], c->pop_pack ());
+      return_trace (true);
+    }
+    c->pop_discard ();
+    return_trace (false);
   }
 
   bool serialize_multiple (hb_serialize_context_t *c,
@@ -1577,11 +1574,17 @@ struct SubstLookup : Lookup
   {
     TRACE_SERIALIZE (this);
     if (unlikely (!Lookup::serialize (c, SubTable::Multiple, lookup_props, 1))) return_trace (false);
-    return_trace (serialize_subtable (c, 0).u.multiple.
-		  serialize (c,
-			     glyphs,
-			     substitute_len_list,
-			     substitute_glyphs_list));
+    if (c->push<SubTable> ()->u.multiple.
+        serialize (c,
+                   glyphs,
+                   substitute_len_list,
+                   substitute_glyphs_list))
+    {
+      c->add_link (get_subtables<SubTable> ()[0], c->pop_pack ());
+      return_trace (true);
+    }
+    c->pop_discard ();
+    return_trace (false);
   }
 
   bool serialize_alternate (hb_serialize_context_t *c,
@@ -1592,11 +1595,18 @@ struct SubstLookup : Lookup
   {
     TRACE_SERIALIZE (this);
     if (unlikely (!Lookup::serialize (c, SubTable::Alternate, lookup_props, 1))) return_trace (false);
-    return_trace (serialize_subtable (c, 0).u.alternate.
-		  serialize (c,
-			     glyphs,
-			     alternate_len_list,
-			     alternate_glyphs_list));
+
+    if (c->push<SubTable> ()->u.alternate.
+        serialize (c,
+                   glyphs,
+                   alternate_len_list,
+                   alternate_glyphs_list))
+    {
+      c->add_link (get_subtables<SubTable> ()[0], c->pop_pack ());
+      return_trace (true);
+    }
+    c->pop_discard ();
+    return_trace (false);
   }
 
   bool serialize_ligature (hb_serialize_context_t *c,
@@ -1609,13 +1619,19 @@ struct SubstLookup : Lookup
   {
     TRACE_SERIALIZE (this);
     if (unlikely (!Lookup::serialize (c, SubTable::Ligature, lookup_props, 1))) return_trace (false);
-    return_trace (serialize_subtable (c, 0).u.ligature.
-		  serialize (c,
-			     first_glyphs,
-			     ligature_per_first_glyph_count_list,
-			     ligatures_list,
-			     component_count_list,
-			     component_list));
+    if (c->push<SubTable> ()->u.ligature.
+        serialize (c,
+                   first_glyphs,
+                   ligature_per_first_glyph_count_list,
+                   ligatures_list,
+                   component_count_list,
+                   component_list))
+    {
+      c->add_link (get_subtables<SubTable> ()[0], c->pop_pack ());
+      return_trace (true);
+    }
+    c->pop_discard ();
+    return_trace (false);
   }
 
   template <typename context_t>

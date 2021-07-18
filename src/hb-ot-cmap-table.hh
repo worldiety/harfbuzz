@@ -672,7 +672,7 @@ struct CmapSubtableLongSegmented
   HBUINT16	reserved;	/* Reserved; set to 0. */
   HBUINT32	length;		/* Byte length of this subtable. */
   HBUINT32	language;	/* Ignore. */
-  SortedArrayOf<CmapSubtableLongGroup, HBUINT32>
+  SortedArray32Of<CmapSubtableLongGroup>
 		groups;		/* Groupings. */
   public:
   DEFINE_SIZE_ARRAY (16, groups);
@@ -786,7 +786,7 @@ struct UnicodeValueRange
   DEFINE_SIZE_STATIC (4);
 };
 
-struct DefaultUVS : SortedArrayOf<UnicodeValueRange, HBUINT32>
+struct DefaultUVS : SortedArray32Of<UnicodeValueRange>
 {
   void collect_unicodes (hb_set_t *out) const
   {
@@ -880,23 +880,21 @@ struct UVSMapping
   DEFINE_SIZE_STATIC (5);
 };
 
-struct NonDefaultUVS : SortedArrayOf<UVSMapping, HBUINT32>
+struct NonDefaultUVS : SortedArray32Of<UVSMapping>
 {
   void collect_unicodes (hb_set_t *out) const
   {
-    unsigned int count = len;
-    for (unsigned int i = 0; i < count; i++)
-      out->add (arrayZ[i].unicodeValue);
+    for (const auto& a : as_array ())
+      out->add (a.unicodeValue);
   }
 
   void collect_mapping (hb_set_t *unicodes, /* OUT */
 			hb_map_t *mapping /* OUT */) const
   {
-    unsigned count = len;
-    for (unsigned i = 0; i < count; i++)
+    for (const auto& a : as_array ())
     {
-      hb_codepoint_t unicode = arrayZ[i].unicodeValue;
-      hb_codepoint_t glyphid = arrayZ[i].glyphID;
+      hb_codepoint_t unicode = a.unicodeValue;
+      hb_codepoint_t glyphid = a.glyphID;
       unicodes->add (unicode);
       mapping->set (unicode, glyphid);
     }
@@ -1045,9 +1043,9 @@ struct VariationSelectorRecord
   }
 
   HBUINT24	varSelector;	/* Variation selector. */
-  LOffsetTo<DefaultUVS>
+  Offset32To<DefaultUVS>
 		defaultUVS;	/* Offset to Default UVS Table.  May be 0. */
-  LOffsetTo<NonDefaultUVS>
+  Offset32To<NonDefaultUVS>
 		nonDefaultUVS;	/* Offset to Non-Default UVS Table.  May be 0. */
   public:
   DEFINE_SIZE_STATIC (11);
@@ -1062,9 +1060,8 @@ struct CmapSubtableFormat14
 
   void collect_variation_selectors (hb_set_t *out) const
   {
-    unsigned int count = record.len;
-    for (unsigned int i = 0; i < count; i++)
-      out->add (record.arrayZ[i].varSelector);
+    for (const auto& a : record.as_array ())
+      out->add (a.varSelector);
   }
   void collect_variation_unicodes (hb_codepoint_t variation_selector,
 				   hb_set_t *out) const
@@ -1186,7 +1183,7 @@ struct CmapSubtableFormat14
   protected:
   HBUINT16	format;		/* Format number is set to 14. */
   HBUINT32	length;		/* Byte length of this subtable. */
-  SortedArrayOf<VariationSelectorRecord, HBUINT32>
+  SortedArray32Of<VariationSelectorRecord>
 		record;		/* Variation selector records; sorted
 				 * in increasing order of `varSelector'. */
   public:
@@ -1344,7 +1341,7 @@ struct EncodingRecord
 
   HBUINT16	platformID;	/* Platform ID. */
   HBUINT16	encodingID;	/* Platform-specific encoding ID. */
-  LOffsetTo<CmapSubtable>
+  Offset32To<CmapSubtable>
 		subtable;	/* Byte offset from beginning of table to the subtable for this encoding. */
   public:
   DEFINE_SIZE_STATIC (8);
@@ -1705,7 +1702,7 @@ struct cmap
 
   protected:
   HBUINT16	version;	/* Table version number (0). */
-  SortedArrayOf<EncodingRecord>
+  SortedArray16Of<EncodingRecord>
 		encodingRecord;	/* Encoding tables. */
   public:
   DEFINE_SIZE_ARRAY (4, encodingRecord);

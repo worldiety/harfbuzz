@@ -30,6 +30,9 @@
 #include "hb-aat-layout.hh"
 #include "hb-open-type.hh"
 
+namespace OT {
+struct GDEF;
+};
 
 namespace AAT {
 
@@ -164,7 +167,7 @@ struct LookupSegmentArray
 
   HBGlyphID	last;		/* Last GlyphID in this segment */
   HBGlyphID	first;		/* First GlyphID in this segment */
-  NNOffsetTo<UnsizedArrayOf<T>>
+  NNOffset16To<UnsizedArrayOf<T>>
 		valuesZ;	/* A 16-bit offset from the start of
 				 * the table to the data. */
   public:
@@ -659,7 +662,7 @@ struct ClassTable
   }
   protected:
   HBGlyphID		firstGlyph;	/* First glyph index included in the trimmed array. */
-  ArrayOf<HBUCHAR>	classArray;	/* The class codes (indexed by glyph index minus
+  Array16Of<HBUCHAR>	classArray;	/* The class codes (indexed by glyph index minus
 					 * firstGlyph). */
   public:
   DEFINE_SIZE_ARRAY (4, classArray);
@@ -863,6 +866,7 @@ struct hb_aat_apply_context_t :
   hb_buffer_t *buffer;
   hb_sanitize_context_t sanitizer;
   const ankr *ankr_table;
+  const OT::GDEF *gdef_table;
 
   /* Unused. For debug tracing only. */
   unsigned int lookup_index;
