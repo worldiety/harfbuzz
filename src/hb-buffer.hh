@@ -93,6 +93,7 @@ struct hb_buffer_t
   hb_buffer_cluster_level_t cluster_level;
   hb_codepoint_t replacement; /* U+FFFD or something else. */
   hb_codepoint_t invisible; /* 0 or something else. */
+  hb_codepoint_t not_found; /* 0 or something else. */
   hb_buffer_scratch_flags_t scratch_flags; /* Have space-fallback, etc. */
   unsigned int max_len; /* Maximum allowed len. */
   int max_ops; /* Maximum allowed operations. */
@@ -107,7 +108,7 @@ struct hb_buffer_t
 
   unsigned int idx; /* Cursor into ->info and ->pos arrays */
   unsigned int len; /* Length of ->info and ->pos arrays */
-  unsigned int out_len; /* Length of ->out array if have_output */
+  unsigned int out_len; /* Length of ->out_info array if have_output */
 
   unsigned int allocated; /* Length of allocated arrays */
   hb_glyph_info_t     *info;
@@ -189,13 +190,10 @@ struct hb_buffer_t
   hb_glyph_info_t &prev ()      { return out_info[out_len ? out_len - 1 : 0]; }
   hb_glyph_info_t prev () const { return out_info[out_len ? out_len - 1 : 0]; }
 
-  HB_NODISCARD bool has_separate_output () const { return info != out_info; }
-
-
   HB_INTERNAL void reset ();
   HB_INTERNAL void clear ();
 
-  unsigned int backtrack_len () const { return have_output? out_len : idx; }
+  unsigned int backtrack_len () const { return have_output ? out_len : idx; }
   unsigned int lookahead_len () const { return len - idx; }
   unsigned int next_serial () { return serial++; }
 
@@ -209,7 +207,6 @@ struct hb_buffer_t
   HB_INTERNAL void guess_segment_properties ();
 
   HB_INTERNAL void swap_buffers ();
-  HB_INTERNAL void remove_output ();
   HB_INTERNAL void clear_output ();
   HB_INTERNAL void clear_positions ();
 
