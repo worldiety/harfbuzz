@@ -1,4 +1,4 @@
-in_house_tests = [
+in_house_tests_base = [
   'aat-morx.tests',
   'aat-trak.tests',
   'arabic-fallback-shaping.tests',
@@ -19,6 +19,7 @@ in_house_tests = [
   'emoji.tests',
   'emoji-clusters.tests',
   'fallback-positioning.tests',
+  'glyph-props-no-gdef.tests',
   'hangul-jamo.tests',
   'hyphens.tests',
   'indic-consonant-with-stacker.tests',
@@ -45,6 +46,7 @@ in_house_tests = [
   'myanmar-misc.tests',
   'myanmar-syllable.tests',
   'myanmar-zawgyi.tests',
+  'nested-mark-filtering-sets.tests',
   'none-directional.tests',
   'positioning-features.tests',
   'rand.tests',
@@ -57,6 +59,7 @@ in_house_tests = [
   'tibetan-contractions-2.tests',
   'tibetan-vowels.tests',
   'tt-kern-gpos.tests',
+  'unsafe-to-concat.tests',
   'use-indic3.tests',
   'use-marchen.tests',
   'use-syllable.tests',
@@ -66,4 +69,16 @@ in_house_tests = [
   'variations-rvrn.tests',
   'vertical.tests',
   'zero-width-marks.tests',
+]
+
+in_house_tests_coretext = [
+  'coretext.tests',
+]
+
+in_house_tests_uniscribe = [
+  'uniscribe.tests',
+]
+
+in_house_tests_directwrite = [
+  'directwrite.tests',
 ]
