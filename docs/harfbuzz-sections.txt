@@ -637,6 +637,7 @@ hb_ot_var_normalize_coords
 HB_SET_VALUE_INVALID
 hb_set_add
 hb_set_add_range
+hb_set_add_sorted_array
 hb_set_allocation_successful
 hb_set_copy
 hb_set_clear
@@ -657,6 +658,7 @@ hb_set_is_equal
 hb_set_is_subset
 hb_set_next
 hb_set_next_range
+hb_set_next_many
 hb_set_previous
 hb_set_previous_range
 hb_set_reference
@@ -767,6 +769,7 @@ hb_subset_input_set_flags
 hb_subset_input_unicode_set
 hb_subset_input_glyph_set
 hb_subset_input_set
+hb_subset_or_fail
 hb_subset_plan_create_or_fail
 hb_subset_plan_reference
 hb_subset_plan_destroy
@@ -776,5 +779,8 @@ hb_subset_plan_execute_or_fail
 hb_subset_plan_unicode_to_old_glyph_mapping
 hb_subset_plan_new_to_old_glyph_mapping
 hb_subset_plan_old_to_new_glyph_mapping
-hb_subset_or_fail
+<SUBSECTION Private>
+hb_link_t
+hb_object_t
+hb_subset_repack_or_fail
 </SECTION>
