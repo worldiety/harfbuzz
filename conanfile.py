@@ -76,12 +76,18 @@ class HarfbuzzConan(ConanFile):
         debug_prefix_mapping = '-ffile-prefix-map=' + os.path.abspath(self.source_folder) + '=' + self.name
         cmake.definitions["CMAKE_C_FLAGS"] = debug_prefix_mapping
         cmake.definitions["CMAKE_CXX_FLAGS"] = debug_prefix_mapping
-        cmake.definitions["CMAKE_POSITION_INDEPENDENT_CODE"] = self.options.fPIC
+        
+        cmake.definitions["CMAKE_POSITION_INDEPENDENT_CODE"] = self.options.get_safe("fPIC", True)
+        cmake.definitions["CMAKE_INSTALL_RPATH_USE_LINK_PATH"] = True
+        
+        debug_prefix_mapping = '-ffile-prefix-map=' + os.path.abspath(self.source_folder) + '=' + self.name
+        cmake.definitions["CMAKE_C_FLAGS"] = debug_prefix_mapping
+        cmake.definitions["CMAKE_CXX_FLAGS"] = debug_prefix_mapping
                 
         # fix for MinGW debug build
         if self.settings.compiler == "gcc" and self.settings.os == "Windows":
-            cmake.definitions["CMAKE_C_FLAGS"] = "-Wa,-mbig-obj"
-            cmake.definitions["CMAKE_CXX_FLAGS"] = "-Wa,-mbig-obj"
+            cmake.definitions["CMAKE_C_FLAGS"] = "-Wa,-mbig-obj " + debug_prefix_mapping
+            cmake.definitions["CMAKE_CXX_FLAGS"] = "-Wa,-mbig-obj " + debug_prefix_mapping
 
         cmake.configure(source_folder=self.source_folder)
         return cmake

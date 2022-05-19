@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.1)
+cmake_policy(VERSION 3.1)
 project(harfbuzz)
 
 message(WARN "HarfBuzz has a Meson port and tries to migrate all the other build systems to it, please consider using it as we might remove our cmake port soon.")
@@ -11,8 +12,6 @@ if (BUILD_FRAMEWORK)
     message(FATAL_ERROR
       "You should use Xcode generator with BUILD_FRAMEWORK enabled")
   endif ()
-  set (CMAKE_OSX_ARCHITECTURES "$(ARCHS_STANDARD_32_64_BIT)")
-  set (CMAKE_MACOSX_RPATH ON)
   set (BUILD_SHARED_LIBS ON)
 endif ()
 
@@ -40,10 +39,6 @@ option(HB_HAVE_ICU "Enable icu unicode functions" OFF)
 if (TARGET freetype)
   set (HB_HAVE_FREETYPE ON)
   add_definitions(-DHAVE_FREETYPE=1)
-endif ()
-if (APPLE)
-  option(HB_HAVE_CORETEXT "Enable CoreText shaper backend on macOS" ON)
-  set (CMAKE_MACOSX_RPATH ON)
 endif ()
 if (WIN32)
   option(HB_HAVE_UNISCRIBE "Enable Uniscribe shaper backend on Windows" OFF)
@@ -642,7 +637,6 @@ endif ()
 
 ## Additional framework build configs
 if (BUILD_FRAMEWORK)
-  set (CMAKE_MACOSX_RPATH ON)
   set_target_properties(harfbuzz PROPERTIES
     FRAMEWORK TRUE
     PUBLIC_HEADER "${project_headers}"
