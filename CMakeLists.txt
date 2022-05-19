@@ -466,13 +466,13 @@ if (UNIX OR MINGW)
   # thus we use MATCHES instead of STREQUAL to include either regular Clang or AppleClang
   if (CMAKE_CXX_COMPILER_ID MATCHES "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     # Make sure we don't link to libstdc++
-    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-rtti -fno-exceptions")
+    set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -frtti -fexceptions")
     set (CMAKE_CXX_IMPLICIT_LINK_LIBRARIES "m") # libm
     set (CMAKE_CXX_IMPLICIT_LINK_DIRECTORIES "")
-    set_target_properties(harfbuzz PROPERTIES LINKER_LANGUAGE C)
-    if (HB_BUILD_SUBSET)
-      set_target_properties(harfbuzz-subset PROPERTIES LINKER_LANGUAGE C)
-    endif ()
+#    set_target_properties(harfbuzz PROPERTIES LINKER_LANGUAGE C)
+#    if (HB_BUILD_SUBSET)
+#      set_target_properties(harfbuzz-subset PROPERTIES LINKER_LANGUAGE C)
+#    endif ()
 
     # No threadsafe statics as we do it ourselves
     set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-threadsafe-statics")
