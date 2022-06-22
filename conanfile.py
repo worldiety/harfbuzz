@@ -65,11 +65,10 @@ class HarfbuzzConan(ConanFile):
             "HB_BUILD_SUBSET": self.options.with_subset,
             "HB_HAVE_GOBJECT": False,
             "HB_HAVE_INTROSPECTION": False,
+            "HB_HAVE_CORETEXT": False,
         }
 
-        if tools.is_apple_os(self.settings.os):
-            defs["HB_HAVE_CORETEXT"] = True
-        elif self.settings.os == "Windows":
+        if self.settings.os == "Windows":
             defs["HB_HAVE_GDI"] = self.options.with_gdi
             defs["HB_HAVE_UNISCRIBE"] = self.options.with_uniscribe
             defs["HB_HAVE_DIRECTWRITE"] = self.options.with_directwrite
