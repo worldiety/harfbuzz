@@ -42,15 +42,6 @@ class HarfbuzzConan(ConanFile):
     python_requires = "wdyConanHelper/[]"
     python_requires_extend = "wdyConanHelper.ConanCMake"
 
-
-    def config_options(self):
-        if self.settings.os == "Windows":
-            del self.options.fPIC
-        else:
-            del self.options.with_gdi
-            del self.options.with_uniscribe
-            del self.options.with_directwrite
-
     def requirements(self):
         if self.options.with_freetype:
             self.requires("freetype/[]")
