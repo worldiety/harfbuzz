@@ -101,6 +101,8 @@ if (${HAVE_STDBOOL_H})
   add_definitions(-DHAVE_STDBOOL_H)
 endif ()
 
+find_package(freetype)
+
 if (NOT MSVC)
   set(THREADS_PREFER_PTHREAD_FLAG ON)
   find_package(Threads)
@@ -181,6 +183,8 @@ set (subset_project_sources ${HB_SUBSET_sources})
 set (project_extra_sources)
 set (project_headers ${HB_BASE_headers})
 set (subset_project_headers ${HB_SUBSET_headers})
+
+
 
 ## Find and include needed header folders and libraries
 if (HB_HAVE_FREETYPE AND NOT TARGET freetype)
@@ -416,7 +420,7 @@ endif ()
 
 ## Define harfbuzz library
 add_library(harfbuzz ${project_sources} ${project_extra_sources} ${project_headers})
-target_link_libraries(harfbuzz ${THIRD_PARTY_LIBS})
+target_link_libraries(harfbuzz PUBLIC ${THIRD_PARTY_LIBS})
 target_include_directories(harfbuzz PUBLIC
                            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>"
                            "$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/harfbuzz>")
