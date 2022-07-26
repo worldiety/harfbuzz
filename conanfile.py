@@ -65,7 +65,7 @@ class HarfbuzzConan(ConanFile):
             defs["HB_HAVE_DIRECTWRITE"] = self.options.with_directwrite
         # fix for MinGW debug build
         if self.settings.compiler == "gcc" and self.settings.os == "Windows":
-            defs["CMAKE_C_FLAGS"] = "-Wa,-mbig-obj " + debug_prefix_mapping
-            defs["CMAKE_CXX_FLAGS"] = "-Wa,-mbig-obj " + debug_prefix_mapping
+            defs["CMAKE_C_FLAGS"] = "-Wa,-mbig-obj "
+            defs["CMAKE_CXX_FLAGS"] = "-Wa,-mbig-obj"
         return defs
 
