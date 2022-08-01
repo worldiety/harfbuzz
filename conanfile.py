@@ -7,7 +7,7 @@ required_conan_version = ">=1.33.0"
 
 class HarfbuzzConan(ConanFile):
     name = "harfbuzz"
-    version = "5.0.1"
+    version = "5.1.0"
     
     description = "HarfBuzz is an OpenType text shaping engine."
     topics = ("opentype", "text", "engine")
