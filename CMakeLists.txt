@@ -119,6 +119,7 @@ endif ()
 
 if (MSVC)
   add_definitions(-wd4244 -wd4267 -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS)
+  add_definitions(-bigobj)
 endif ()
 
 
